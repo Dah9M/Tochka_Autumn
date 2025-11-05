@@ -78,10 +78,14 @@ class Run
     static bool ClearHallway(string hallway, int start, int end)
     {
         var step = end > start ? 1 : -1;
-        for (var p = start + step; p != end; p += step)
+        for (var p = start + step; ; p += step)
+        {
             if (hallway[p] != '.') return false;
+            if (p == end) break;
+        }
         return true;
     }
+
 
 
     static bool RoomReadyFor(char letter, string room)
