@@ -1,4 +1,8 @@
-﻿class Run
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Run
 {
     private static readonly char[] Types = { 'A', 'B', 'C', 'D' };
     private static readonly Dictionary<char, int> Cost = new() { { 'A', 1 }, { 'B', 10 }, { 'C', 100 }, { 'D', 1000 } };
