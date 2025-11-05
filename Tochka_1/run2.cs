@@ -4,157 +4,152 @@ using System.Linq;
 
 class Run2
 {
-    static List<string> Solve(List<(string, string)> edges)
+    static bool IsGateway(string node)
     {
-        var result = new List<string>();
+        return node.Any(char.IsLetter) && node == node.ToUpperInvariant();
+    }
+
+    static bool IsLowercase(string node)
+    {
+        return node.Any(char.IsLetter) && node == node.ToLowerInvariant();
+    }
+
+    static Dictionary<string, int> Bfs(Dictionary<string, 
+        HashSet<string>> 
+        graph, string start, 
+        Func<string, bool> allow = null)
+    {
+        var dist = new Dictionary<string, int> { [start] = 0 };
+        var queue = new Queue<string>();
         
-        var graph = new Dictionary<string, HashSet<string>>();
-        foreach (var (u, v) in edges)
+        queue.Enqueue(start);
+
+        while (queue.Count > 0)
         {
-            if (!graph.ContainsKey(u)) graph[u] = new HashSet<string>();
-            if (!graph.ContainsKey(v)) graph[v] = new HashSet<string>();
-            graph[u].Add(v);
-            graph[v].Add(u);
-        }
-        
-        var gateways = graph.Keys.Where(node => char.IsUpper(node[0])).ToHashSet();
-        
-        string virusPosition = "a";
-        
-        while (true)
-        {
-            var distances = BFS(graph, virusPosition, gateways);
-            
-            if (distances.Count == 0) break;
-            
-            var targetGateway = distances
-                .OrderBy(kv => kv.Value)
-                .ThenBy(kv => kv.Key, StringComparer.Ordinal)
-                .First().Key;
-            
-            var targetGatewayEdges = new List<string>();
-            if (graph.ContainsKey(targetGateway))
+            var current = queue.Dequeue();
+            if (!graph.TryGetValue(current, out var neighbors)) continue;
+
+            foreach (var v in neighbors)
             {
-                foreach (var neighbor in graph[targetGateway].OrderBy(n => n, StringComparer.Ordinal))
+                if (allow != null && !allow(v)) continue;
+                
+                if (!dist.ContainsKey(v))
                 {
-                    if (!char.IsUpper(neighbor[0]))
-                    {
-                        targetGatewayEdges.Add($"{targetGateway}-{neighbor}");
-                    }
+                    dist[v] = dist[current] + 1;
+                    queue.Enqueue(v);
                 }
             }
-            
-            if (targetGatewayEdges.Count == 0) break;
-            
-            var edgeToRemove = targetGatewayEdges.OrderBy(e => e, StringComparer.Ordinal).First();
-            var parts = edgeToRemove.Split('-');
-            var gw = parts[0];
-            var node = parts[1];
-            
-            if (graph.ContainsKey(gw) && graph[gw].Contains(node))
+        }
+
+        return dist;
+    }
+
+    static (List<(string gate, string node)>, HashSet<string>) FrontierAndComponent(
+        Dictionary<string, HashSet<string>> graph, string cur)
+    {
+        HashSet<string> components;
+        if (graph.ContainsKey(cur))
+        {
+            var d = Bfs(graph, cur, n => IsLowercase(n));
+            components = new HashSet<string>(d.Keys);
+        }
+        else
+        {
+            components = new HashSet<string>();
+        }
+
+        var frontier = new HashSet<(string, string)>();
+        foreach (var current in components)
+        {
+            if (!graph.TryGetValue(current, out var neighbors)) continue;
+            foreach (var v in neighbors)
             {
-                graph[gw].Remove(node);
-                graph[node].Remove(gw);
+                if (IsGateway(v))
+                {
+                    frontier.Add((v, current));
+                }
             }
+        }
+
+        var list = frontier.ToList();
+        list = list.OrderBy(t => t.Item1).ThenBy(t => t.Item2).ToList();
+
+        return (list, components);
+    }
+
+    static List<string> Solve(List<(string a, string b)> edges)
+    {
+        var graph = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var gates = new HashSet<string>(StringComparer.Ordinal);
+
+        void AddEdge(string a, string b)
+        {
+            if (!graph.ContainsKey(a)) graph[a] = new HashSet<string>();
+            if (!graph.ContainsKey(b)) graph[b] = new HashSet<string>();
             
-            if (!graph.ContainsKey(gw) || graph[gw].Count == 0)
+            graph[a].Add(b);
+            graph[b].Add(a);
+            
+            if (IsGateway(a)) gates.Add(a);
+            if (IsGateway(b)) gates.Add(b);
+        }
+
+        foreach (var edge in edges)
+            AddEdge(edge.a, edge.b);
+
+        var virus = "a";
+        var result = new List<string>();
+
+        while (true)
+        {
+            var (frontier, components) = FrontierAndComponent(graph, virus);
+            
+            if (frontier.Count == 0) break;
+
+            var candidates = frontier.Where(t => t.node == virus).ToList();
+            
+            if (!candidates.Any()) candidates = frontier;
+
+            var chosen = candidates.OrderBy(t => t.gate).ThenBy(t => t.node).First();
+            var G = chosen.gate;
+            var u = chosen.node;
+
+            if (graph.TryGetValue(u, out var setU)) setU.Remove(G);
+            if (graph.TryGetValue(G, out var setG)) setG.Remove(u);
+
+            result.Add($"{G}-{u}");
+
+            var (frontAfter, _) = FrontierAndComponent(graph, virus);
+            if (frontAfter.Count == 0) break;
+
+            var distFromV = Bfs(graph, virus);
+            var maybeGates = gates.Where(g => distFromV.ContainsKey(g)).ToList();
+            if (!maybeGates.Any()) break;
+
+            var minDist = maybeGates.Min(g => distFromV[g]);
+            var candidateGates = maybeGates.Where(g => distFromV[g] == minDist).ToList();
+            var targetGate = candidateGates.OrderBy(x => x).First();
+
+            var distToGate = Bfs(graph, targetGate);
+
+            int distVirus = distToGate.ContainsKey(virus) ? distToGate[virus] : int.MaxValue;
+            var nextSteps = graph.ContainsKey(virus)
+                ? graph[virus].Where(n => IsLowercase(n) && distToGate.GetValueOrDefault(n, int.MaxValue) == distVirus - 1).ToList()
+                : new List<string>();
+
+            if (nextSteps.Any())
             {
-                gateways.Remove(gw);
-            }
-            
-            result.Add(edgeToRemove);
-            
-            var newDistances = BFS(graph, virusPosition, gateways);
-            
-            if (newDistances.Count == 0) break;
-            
-            var newTargetGateway = newDistances
-                .OrderBy(kv => kv.Value)
-                .ThenBy(kv => kv.Key, StringComparer.Ordinal)
-                .First().Key;
-            
-            var nextNode = GetNextNode(graph, virusPosition, newTargetGateway);
-            if (nextNode != null)
-            {
-                virusPosition = nextNode;
+                virus = nextSteps.OrderBy(x => x).First();
             }
             else
             {
                 break;
             }
         }
-        
+
         return result;
     }
-    
-    static Dictionary<string, int> BFS(Dictionary<string, HashSet<string>> graph, string start, HashSet<string> targets)
-    {
-        var distances = new Dictionary<string, int>();
-        var queue = new Queue<(string node, int dist)>();
-        var visited = new HashSet<string>();
-        
-        queue.Enqueue((start, 0));
-        visited.Add(start);
-        
-        while (queue.Count > 0)
-        {
-            var (node, dist) = queue.Dequeue();
-            
-            if (targets.Contains(node))
-            {
-                distances[node] = dist;
-            }
-            
-            if (graph.ContainsKey(node))
-            {
-                foreach (var neighbor in graph[node].OrderBy(x => x, StringComparer.Ordinal))
-                {
-                    if (!visited.Contains(neighbor))
-                    {
-                        visited.Add(neighbor);
-                        queue.Enqueue((neighbor, dist + 1));
-                    }
-                }
-            }
-        }
-        
-        return distances;
-    }
-    
-    static string GetNextNode(Dictionary<string, HashSet<string>> graph, string current, string target)
-    {
-        var queue = new Queue<(string node, List<string> path)>();
-        var visited = new HashSet<string>();
-        
-        queue.Enqueue((current, new List<string> { current }));
-        visited.Add(current);
-        
-        while (queue.Count > 0)
-        {
-            var (node, path) = queue.Dequeue();
-            
-            if (node == target)
-            {
-                return path.Count > 1 ? path[1] : null;
-            }
-            
-            if (graph.ContainsKey(node))
-            {
-                foreach (var neighbor in graph[node].OrderBy(x => x, StringComparer.Ordinal))
-                {
-                    if (!visited.Contains(neighbor))
-                    {
-                        visited.Add(neighbor);
-                        var newPath = new List<string>(path) { neighbor };
-                        queue.Enqueue((neighbor, newPath));
-                    }
-                }
-            }
-        }
-        
-        return null;
-    }
-    
+
     static void Main()
     {
         var edges = new List<(string, string)>();
@@ -163,20 +158,16 @@ class Run2
         while ((line = Console.ReadLine()) != null)
         {
             line = line.Trim();
-            if (!string.IsNullOrEmpty(line))
+            if (line == "") continue;
+            var parts = line.Split('-', 2);
+            if (parts.Length == 2)
             {
-                var parts = line.Split('-');
-                if (parts.Length == 2)
-                {
-                    edges.Add((parts[0], parts[1]));
-                }
+                edges.Add((parts[0], parts[1]));
             }
         }
 
-        var result = Solve(edges);
-        foreach (var edge in result)
-        {
-            Console.WriteLine(edge);
-        }
+        var cuts = Solve(edges);
+        foreach (var cut in cuts)
+            Console.WriteLine(cut);
     }
 }
