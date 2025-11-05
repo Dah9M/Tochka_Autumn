@@ -1,5 +1,3 @@
-namespace Tochka_1;
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,24 +32,21 @@ class Run2
                 .ThenBy(kv => kv.Key, StringComparer.Ordinal)
                 .First().Key;
             
-            var gatewayEdges = new List<string>();
-            foreach (var gateway in gateways.OrderBy(g => g, StringComparer.Ordinal))
+            var targetGatewayEdges = new List<string>();
+            if (graph.ContainsKey(targetGateway))
             {
-                if (graph.ContainsKey(gateway))
+                foreach (var neighbor in graph[targetGateway].OrderBy(n => n, StringComparer.Ordinal))
                 {
-                    foreach (var neighbor in graph[gateway].OrderBy(n => n, StringComparer.Ordinal))
+                    if (!char.IsUpper(neighbor[0]))
                     {
-                        if (!char.IsUpper(neighbor[0]))
-                        {
-                            gatewayEdges.Add($"{gateway}-{neighbor}");
-                        }
+                        targetGatewayEdges.Add($"{targetGateway}-{neighbor}");
                     }
                 }
             }
             
-            if (gatewayEdges.Count == 0) break;
+            if (targetGatewayEdges.Count == 0) break;
             
-            var edgeToRemove = gatewayEdges.OrderBy(e => e, StringComparer.Ordinal).First();
+            var edgeToRemove = targetGatewayEdges.OrderBy(e => e, StringComparer.Ordinal).First();
             var parts = edgeToRemove.Split('-');
             var gw = parts[0];
             var node = parts[1];
@@ -69,10 +64,23 @@ class Run2
             
             result.Add(edgeToRemove);
             
-            var nextNode = GetNextNode(graph, virusPosition, targetGateway);
+            var newDistances = BFS(graph, virusPosition, gateways);
+            
+            if (newDistances.Count == 0) break;
+            
+            var newTargetGateway = newDistances
+                .OrderBy(kv => kv.Value)
+                .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+                .First().Key;
+            
+            var nextNode = GetNextNode(graph, virusPosition, newTargetGateway);
             if (nextNode != null)
             {
                 virusPosition = nextNode;
+            }
+            else
+            {
+                break;
             }
         }
         
